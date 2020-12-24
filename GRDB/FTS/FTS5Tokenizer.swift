@@ -153,37 +153,18 @@ extension Database {
             
             var tokenizerPointer: OpaquePointer? = nil
             let code: Int32
-            if let argument = arguments.first {
-                // Turn [String] into ContiguousArray<UnsafePointer<Int8>>
-                // (for an alternative implementation see https://oleb.net/blog/2016/10/swift-array-of-c-strings/)
-                func convertArguments<Result>(
-                    _ array: inout ContiguousArray<UnsafePointer<Int8>>,
-                    _ car: String,
-                    _ cdr: [String],
-                    _ body: (ContiguousArray<UnsafePointer<Int8>>) -> Result)
-                    -> Result
-                {
-                    car.withCString { cString in
-                        if let car = cdr.first {
-                            array.append(cString)
-                            return convertArguments(&array, car, Array(cdr.suffix(from: 1)), body)
-                        } else {
-                            return body(array)
-                        }
-                    }
-                }
-                var cStrings = ContiguousArray<UnsafePointer<Int8>>()
-                code = convertArguments(&cStrings, argument, Array(arguments.suffix(from: 1))) { cStrings in
-                    cStrings.withUnsafeBufferPointer { azArg in
-                        xCreate(
-                            contextPointer,
-                            UnsafeMutablePointer(OpaquePointer(azArg.baseAddress!)),
-                            Int32(cStrings.count),
-                            &tokenizerPointer)
-                    }
-                }
-            } else {
+            if arguments.isEmpty {
                 code = xCreate(contextPointer, nil, 0, &tokenizerPointer)
+            } else {
+                let cargs = ContiguousArray(arguments.map({ strdup($0) }))
+                code = cargs.withUnsafeBufferPointer { azArg in
+                    xCreate(
+                        contextPointer,
+                        UnsafeMutablePointer(OpaquePointer(azArg.baseAddress!)),
+                        Int32(cargs.count),
+                        &tokenizerPointer)
+                }
+                cargs.forEach({ free($0) })
             }
             
             guard code == SQLITE_OK else {
